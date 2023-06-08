@@ -151,10 +151,3 @@ interface Table<T> {
     update(id: string, item: T): Promise<void>
     delete(id: string): Promise<void>
 }
-// interface ChildTable<T> {
-//     create(foreignKey: string, members: T): Promise<string>
-//     read(id: string): Promise<T>
-//     readAll(filter: string): Promise<Array<T>>
-//     update(id: string, item: T): Promise<void>
-//     delete(id: string): Promise<void>
-// }
