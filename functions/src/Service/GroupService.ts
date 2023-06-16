@@ -1,4 +1,4 @@
-import { Organization } from "../Model/Organization"
+import { Group } from "../Model/Group"
 import { Repository } from "../Repository/Repository"
 import { Member } from "../Model/Member"
 import { v4 as uuidv4 } from 'uuid'
@@ -9,19 +9,19 @@ import { PaymentGatewayClient } from "../Client/PaymentGatewayClient"
 import { User } from "../Model/User"
 import { Tag } from "../Model/Tag"
 import { DealDurations } from "../Constants/DealDurations"
-import { organizationValidations } from "../Util/validations/organizationValidations"
+import { groupValidations } from "../Util/validations/groupValidations"
 import { userValidations } from "../Util/validations/userValidations"
 
-export const OrganizationService = Object.freeze({
+export const GroupService = Object.freeze({
 
-    createOrganization: async (organizationName: string, username: string, instagram: string, tagExpiration: number, captchaResponse?:string): Promise<string> => {
+    createGroup: async (organization: string, username: string, instagram: string, tagExpiration: number, captchaResponse?:string): Promise<string> => {
         if(userValidations.username?.test(username) === false){
             throw new Error("invalid username provided")
         }
-        if(organizationValidations.organization_name?.test(organizationName) === false){
+        if(groupValidations.organization?.test(organization) === false){
             throw new Error("invalid organization name provided")
         }
-        if(organizationValidations.instagram?.test(instagram) === false){
+        if(groupValidations.instagram?.test(instagram) === false){
             throw new Error("invalid instagram name provided")
         }
         const user: User = await Repository.users.read(username)
@@ -39,13 +39,7 @@ export const OrganizationService = Object.freeze({
         }
 
         try{
-            if(organizationName.length > 30){
-                throw new Error("organization name is too long")
-            }
-            if(/^[a-z0-9 _]{1,}$/g.test(organizationName) === false){
-                throw new Error("invalid organization name")
-            }
-            await Repository.organizations.read(organizationName)
+            await Repository.groups.read(organization)
             throw new Error("organization already exists")
         }
         catch(err){
@@ -55,8 +49,8 @@ export const OrganizationService = Object.freeze({
             }
         }
 
-        const organization: Organization = {
-            organization_name: organizationName,
+        const group: Group = {
+            organization,
             owner: username,
             memberCount: 0,
             instagram,
@@ -72,22 +66,22 @@ export const OrganizationService = Object.freeze({
             },
         }
 
-        const result = await Repository.organizations.create(organization)
-        user.organizations[organization.organization_name] = Date.now()
+        const result = await Repository.groups.create(group)
+        user.organizations[group.organization] = Date.now()
         await Repository.users.create(user)
 
         return result
     },
 
-    readOrganization: async (username: string, organizationName: string): Promise<Organization> => {
-        const organization: Organization = await Repository.organizations.read(organizationName)
-        organization.tags.expiration = Environment.getEnablePremium() ? organization.tags.expiration : (new Date("'Sat Dec 31 9999'")).getTime()
-        const isMember: boolean = Repository.organization_members.read(organizationName, username) === undefined
-        if(!isMember && organization.owner !== username){
+    readGroup: async (username: string, organization: string): Promise<Group> => {
+        const group: Group = await Repository.groups.read(organization)
+        group.tags.expiration = Environment.getEnablePremium() ? group.tags.expiration : (new Date("'Sat Dec 31 9999'")).getTime()
+        const isMember: boolean = Repository.group_members.read(organization, username) === undefined
+        if(!isMember && group.owner !== username){
             throw new Error("insufficient permissions")
         }
-        organization.memberCount = await Repository.organization_members.readLength(organizationName)
-        return organization
+        group.memberCount = await Repository.group_members.readLength(organization)
+        return group
     },
 
     readOrganizations: async (username: string): Promise<{[key: string]: {
@@ -107,26 +101,26 @@ export const OrganizationService = Object.freeze({
         const user = await Repository.users.read(username)
         const organizations = Object.keys(user.organizations)
         for(const organization of organizations){
-            const orgInfo = await Repository.organizations.read(organization)
+            const orgInfo = await Repository.groups.read(organization)
             response[organization] = {
                 tags: {
                     tagCount: orgInfo.tags.tag_count, 
                     timestamp: orgInfo.tags.timestamp
                 },
-                memberCount: await Repository.organization_members.readLength(organization)
+                memberCount: await Repository.group_members.readLength(organization)
             }
         }
         return response
     },
 
     // removeMember: async (jwt: JWT, organizationName: string, username: string) => {
-    //     const organization: Organization = await Repository.organizations.read(organizationName)
-    //     const member = await Repository.organization_members.read(organizationName, username)
+    //     const group: Group = await Repository.groups.read(organizationName)
+    //     const member = await Repository.group_members.read(organizationName, username)
     //     if(member === undefined){
     //         throw new Error("could not perform this action")
     //     }
-    //     if (organization.owner === jwt.user || member.permissions.accounts.DELETE){
-    //         await Repository.organization_members.delete(organizationName, username)
+    //     if (group.owner === jwt.user || member.permissions.accounts.DELETE){
+    //         await Repository.group_members.delete(organizationName, username)
             
     //     }
     //     else{
@@ -134,15 +128,15 @@ export const OrganizationService = Object.freeze({
     //     }
     // },
 
-    upgradeToPremium: async (organizationName: string, duration: number, card: PaymentCard) => {
-        const organization: Organization = await Repository.organizations.read(organizationName)
-        organization.subscription = {
+    upgradeToPremium: async (organization: string, duration: number, card: PaymentCard) => {
+        const group: Group = await Repository.groups.read(organization)
+        group.subscription = {
             last_renewal_date: Date.now(),
-            expiration_date: organization.subscription.expiration_date === undefined || 
-                organization.subscription.expiration_date === null || 
-                organization.subscription.expiration_date <= Date.now() 
+            expiration_date: group.subscription.expiration_date === undefined || 
+                group.subscription.expiration_date === null || 
+                group.subscription.expiration_date <= Date.now() 
                     ? Date.now() + duration 
-                    : organization.subscription.expiration_date + duration,
+                    : group.subscription.expiration_date + duration,
         }
 
         const dealDurations: Record<string, boolean> = {}
@@ -170,25 +164,25 @@ export const OrganizationService = Object.freeze({
         if(Environment.getEnableCardPayment() === true){
             await PaymentGatewayClient.chargeCard(card, totalCost)
         }
-        await Repository.organizations.update(organization.organization_name, organization)
+        await Repository.groups.update(organization, group)
     },
 
     generateTag: async (username: string, organizationName: string, description: string, expiration: number, captchaResponse?:string): Promise<string> => {
         if(userValidations.username?.test(username) === false){
             throw new Error("invalid username provided")
         }
-        if(organizationValidations.organization_name?.test(organizationName) === false){
+        if(groupValidations.organization?.test(organizationName) === false){
             throw new Error("invalid organization name provided")
         }
-        if(organizationValidations.organization_name?.test(organizationName) === false){
+        if(groupValidations.organization?.test(organizationName) === false){
             throw new Error("invalid tag description provided")
         }
-        if(organizationValidations.creation_date?.test(expiration) === false){
+        if(groupValidations.creation_date?.test(expiration) === false){
             throw new Error("invalid expiration provided")
         }
 
-        const organization = await Repository.organizations.read(organizationName)
-        let memberInfo: Member | undefined = await Repository.organization_members.read(organizationName, username)
+        const group = await Repository.groups.read(organizationName)
+        let memberInfo: Member | undefined = await Repository.group_members.read(organizationName, username)
 
         if(memberInfo === undefined){
             throw new Error("unauthorized")
@@ -198,27 +192,26 @@ export const OrganizationService = Object.freeze({
             token: uuidv4(),
             description,
             created_at: Date.now(),
-            expiration: Date.now() + organization.tags.expiration
+            expiration: group.tags.expiration == null ? null : Date.now() + group.tags.expiration
         }
 
-        if(Date.now() - organization.tags.timestamp >= TimePeriods.HOUR){
-            organization.tags.tag_count = 0
-            organization.tags.timestamp = Date.now()
+        if(Date.now() - group.tags.timestamp >= TimePeriods.HOUR){
+            group.tags.tag_count = 0
+            group.tags.timestamp = Date.now()
         }
 
         if(
-            organization.subscription.expiration_date !== null && 
-            Date.now() >= organization.subscription.expiration_date && 
-            organization.tags.tag_count >= Environment.getMaxUnsubscribedTagCountPerHour() &&
+            group.subscription.expiration_date !== null && 
+            Date.now() >= group.subscription.expiration_date && 
+            group.tags.tag_count >= Environment.getMaxUnsubscribedTagCountPerHour() &&
             Environment.getEnablePremium() === false
         ){
             throw new Error("organization token quota exceeded")
         }        
 
-        if(username === organization.owner && memberInfo === undefined){
+        if(username === group.owner && memberInfo === undefined){
             memberInfo = {
                 username,
-                organization: organizationName,
                 permissions :{ 
                     tokensPerHour: 6,
                     accounts: {
@@ -237,7 +230,7 @@ export const OrganizationService = Object.freeze({
                 },
                 creation_date: Date.now(),   
             }
-            await Repository.organization_members.create(organizationName, memberInfo)
+            await Repository.group_members.create(organizationName, memberInfo)
         }
         else if(memberInfo === undefined){
             throw new Error("unauthorized")
@@ -258,7 +251,7 @@ export const OrganizationService = Object.freeze({
             }
 
             memberInfo.tags.tag_count += 1
-            await Repository.organization_members.create(organizationName, memberInfo)
+            await Repository.group_members.create(organizationName, memberInfo)
         }
 
         const tags: Record<string, Tag> = await Repository.tags.readAll(organizationName)
@@ -278,8 +271,8 @@ export const OrganizationService = Object.freeze({
             throw new Error("captcha is required")
         }
 
-        organization.tags.tag_count += 1
-        await Repository.organizations.update(organizationName, organization)
+        group.tags.tag_count += 1
+        await Repository.groups.update(organizationName, group)
         await Repository.tags.create(organizationName, token)
         return token.token
     },
@@ -287,14 +280,14 @@ export const OrganizationService = Object.freeze({
     verifyTag: async (username: string, organizationName: string, tag: string): Promise<boolean> => {
         const tagInfo: Tag | undefined = await Repository.tags.read(organizationName, tag)
 
-        const organization = await Repository.organizations.read(organizationName)
-        const member: Member | undefined = await Repository.organization_members.read(organizationName, username)
-        if(organization.owner !== username && (member === undefined || member.permissions.allowScanTags === false)){
+        const group = await Repository.groups.read(organizationName)
+        const member: Member | undefined = await Repository.group_members.read(organizationName, username)
+        if(group.owner !== username && (member === undefined || member.permissions.allowScanTags === false)){
             throw new Error("unauthorized to perform this action")
         }
 
         if(tagInfo !== undefined){
-            if(Date.now() >=  tagInfo.expiration){
+            if(tagInfo.expiration !== null && Date.now() >=  tagInfo.expiration){
                 return  false
             }
             await Repository.tags.delete(organizationName, tag)

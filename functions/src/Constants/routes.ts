@@ -2,9 +2,9 @@
 const apiPrefix = "/api"
 export const routes = Object.freeze({
     auth: apiPrefix + "/auth",
-    createOrganization: apiPrefix + "/organization",
-    readOrganization: apiPrefix + "/organizations/:organization",
-    readOrganizations: apiPrefix + "/organizations",
+    createGroup: apiPrefix + "/organization",
+    readGroup: apiPrefix + "/organizations/:organization",
+    readGroups: apiPrefix + "/organizations",
     generateTag: apiPrefix + "/tags/:organization/generate",
     verifyTag: apiPrefix + "/tags/:organization/verify/:tag",
     verifyTagWeb: apiPrefix + "/tags/:organization/verifyweb/:tag",

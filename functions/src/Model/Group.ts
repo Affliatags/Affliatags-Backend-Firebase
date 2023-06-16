@@ -1,5 +1,5 @@
-export interface Organization {
-    organization_name: string
+export interface Group {
+    organization: string
     owner: string
     memberCount: number
     instagram: string
@@ -10,7 +10,7 @@ export interface Organization {
     tags: {
         tag_count: number,
         timestamp: number,
-        expiration: number,
+        expiration: number | null,
     }
     creation_date: number
 } 

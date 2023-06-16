@@ -3,18 +3,18 @@ import * as express from "express"
 import { routes } from "./Constants/routes";
 import { UserService } from "./Service/UserService";
 import { validateJWT } from "./Util/middleware/validateJWT";
-import { OrganizationService } from "./Service/OrganizationService";
+import { GroupService } from "./Service/GroupService";
 import { Member } from "./Model/Member";
 import { UserPermissions } from "./Model/UserPermission";
 import { logger } from "./Util/middleware/logger";
 import { JWT } from "./Model/JWT";
 import { PaymentCard } from "./Model/PaymentCard";
 import { Environment } from "./Constants/environment";
-import { Organization } from "./Model/Organization";
-import { OrganizationDTO } from "./DTO/OrganizationDTO";
+import { Group } from "./Model/Group";
+import { GroupDTO } from "./DTO/GroupDTO";
 import { DealsDTO } from "./DTO/DealsDTO";
 import { userValidations } from "./Util/validations/userValidations";
-import { organizationValidations } from "./Util/validations/organizationValidations";
+import { groupValidations } from "./Util/validations/groupValidations";
 import { ipBlocker } from "./Util/middleware/ipBlocker";
 import { memberValidations } from "./Util/validations/memberValidations";
 import { MemberService } from "./Service/MemberService";
@@ -59,11 +59,11 @@ app.get(routes.generateTag, async (req, res) => {
             throw new Error("unauthorized")
         }
         const  jwt: JWT = UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])
-        const organizationName: string = req.params.organization
+        const organization: string = req.params.organization
         const description: string = req.params.description
         const captchaResponse: string = req.params.captchaResponse
         const expiration: number = Number(req.params.expiration)
-        const tag: string = await OrganizationService.generateTag(jwt.user, organizationName, description, expiration, captchaResponse)
+        const tag: string = await GroupService.generateTag(jwt.user, organization, description, expiration, captchaResponse)
         res.send({ tag })
     }
     catch(err){
@@ -76,13 +76,13 @@ app.get(routes.generateTag, async (req, res) => {
                 res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
                 break
             case "invalid organization name provided":
-                res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)
+                res.status(400).send(`invalid organization name provided. format must match regex: ${groupValidations.organization}`)
                 break
             case "invalid tag description provided":
                 res.status(400).send(`invalid instagram provided. format must match regex: ${memberValidations.tag_description}`)
                 break
             case "invalid expiration provided":
-                res.status(400).send(`invalid expiration provided. format must match regex: ${organizationValidations.creation_date}`)
+                res.status(400).send(`invalid expiration provided. format must match regex: ${groupValidations.creation_date}`)
                 break
             default:
                 logger(error.message)
@@ -100,10 +100,10 @@ app.post(routes.verifyTag, async (req, res) => {
 
         const  jwt: JWT = UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])
         const tag: string = req.params.tag
-        const organizationName: string = req.params.organization
+        const organization: string = req.params.organization
 
         res.send({
-            isValid: await OrganizationService.verifyTag(jwt.user, organizationName, tag)
+            isValid: await GroupService.verifyTag(jwt.user, organization, tag)
         })
     }
     catch(err){
@@ -120,17 +120,17 @@ app.post(routes.verifyTag, async (req, res) => {
     }
 })
 
-app.post(routes.createOrganization, async (req, res) => {
+app.post(routes.createGroup, async (req, res) => {
     try{
         if(typeof(req.headers.authorization) !== "string" || req.headers.authorization.split(" ").length !== 2){
             throw new Error("bearer auth token is missing")
         }        
         const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
-        const organizationName: string = req.body.organizationName
+        const organization: string = req.body.organization
         const instagram: string = req.body.instagram
         const captchaResponse: string = req.body.captchaResponse
-        const tagExpiration: number = Number(req.body.tagExpiration)
-        await OrganizationService.createOrganization(organizationName, username, instagram, tagExpiration, captchaResponse)
+        const tagExpiration: number = req.body.tagExpiration
+        await GroupService.createGroup(organization, username, instagram, tagExpiration, captchaResponse)
         res.status(201).send()
     }
     catch(err){
@@ -146,10 +146,10 @@ app.post(routes.createOrganization, async (req, res) => {
                 res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
                 break
             case "invalid instagram name provided":
-                res.status(400).send(`invalid instagram provided. format must match regex: ${organizationValidations.instagram}`)
+                res.status(400).send(`invalid instagram provided. format must match regex: ${groupValidations.instagram}`)
                 break
             case "invalid organization name provided":
-                res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)                
+                res.status(400).send(`invalid organization name provided. format must match regex: ${groupValidations.organization}`)                
                 break
             case "captcha is required":
                 res.status(400).send("captcha is required")
@@ -162,15 +162,15 @@ app.post(routes.createOrganization, async (req, res) => {
     }
 })
 
-app.get(routes.readOrganization, async (req, res) => {
+app.get(routes.readGroup, async (req, res) => {
     try{
         if(typeof(req.headers.authorization) !== "string" || req.headers.authorization.split(" ").length !== 2){
             throw new Error("bearer auth token is missing")
         }
-        const organizationName: string = req.params.organization
+        const organization: string = req.params.organization
         const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
-        const organization: Organization = await OrganizationService.readOrganization(username, organizationName)
-        res.status(200).send(OrganizationDTO.fromOrganization(organization))
+        const group: Group = await GroupService.readGroup(username, organization)
+        res.status(200).send(GroupDTO.fromOrganization(group))
     }
     catch(err){
         const error: Error = err as Error
@@ -187,13 +187,13 @@ app.get(routes.readOrganization, async (req, res) => {
     }
 })
 
-app.get(routes.readOrganizations, async (req, res) => {
+app.get(routes.readGroups, async (req, res) => {
     try{
         if(typeof(req.headers.authorization) !== "string"){
             throw new Error("bearer auth token is missing")
         }
         const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
-        const organizations = await OrganizationService.readOrganizations(username)
+        const organizations = await GroupService.readOrganizations(username)
         res.status(200).send(organizations)
     }
     catch(err){
@@ -214,12 +214,11 @@ app.post(routes.addMember, async (req, res) => {
     try{
         const username: string = req.body.username
         const permissions: UserPermissions = req.body.permissions
-        const organizationName: string = req.params.organization
-        const tagDescription: string = req.body.tag_description
+        const organization: string = req.params.organization
+        const tagDescription: string = req.body.tagDescription
 
         const member: Member = {
             username,
-            organization: organizationName,
             permissions,
             tag_description: tagDescription,
             tags: {
@@ -234,7 +233,7 @@ app.post(routes.addMember, async (req, res) => {
         }
     
         const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-        await MemberService.addMember(jwt, member)
+        await MemberService.addMember(jwt, organization, member)
         res.status(201).send()
     }
     catch(err){
@@ -259,7 +258,7 @@ app.post(routes.addMember, async (req, res) => {
                 res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
                 break
             case "invalid organization name provided":
-                res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)
+                res.status(400).send(`invalid organization name provided. format must match regex: ${groupValidations.organization}`)
                 break             
             default:
                 logger(error.message)
@@ -273,20 +272,20 @@ app.get(routes.readMembers, async (req, res) => {
     const filter = String(req.query.filter)
     const offset = Number(req.query.offset)
     const limit = Number(req.query.limit)
-    const organizationName: string = req.params.organization
+    const organization: string = req.params.organization
 
     if(typeof(req.headers.authorization) !== "string"){
         throw new Error("unauthorized")
     }        
     const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-    const members = await MemberService.readMembers(jwt, organizationName, filter, offset, limit)
+    const members = await MemberService.readMembers(jwt, organization, filter, offset, limit)
     res.status(200).send(members)
 })
 
 app.put(routes.updateMember, async (req, res) => {
     const permissions: UserPermissions = req.body.permissions
-    const tagDescription: string = req.body.tag_description
-    const organizationName: string = req.params.organization
+    const tagDescription: string = req.body.tagDescription
+    const organization: string = req.params.organization
     const member: string = req.params.member
 
     if(typeof(req.headers.authorization) !== "string"){
@@ -294,7 +293,7 @@ app.put(routes.updateMember, async (req, res) => {
     }        
 
     const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-    await MemberService.updateMember(jwt, organizationName, member, permissions, tagDescription)
+    await MemberService.updateMember(jwt, organization, member, permissions, tagDescription)
     res.status(200).send()
 })
 
@@ -325,11 +324,11 @@ app.delete(routes.deleteMember, async (req, res) => {
 
 Environment.getEnablePremium() && app.post(routes.premium, async (req, res) => {
     try{
-        const organizationName: string = req.params.organization
+        const organization: string = req.params.organization
         const subscriptionDuration: number = req.body.duration
         const paymentCard: PaymentCard = req.body.cardDetails
        
-        await OrganizationService.upgradeToPremium(organizationName, subscriptionDuration, paymentCard)
+        await GroupService.upgradeToPremium(organization, subscriptionDuration, paymentCard)
         res.send("organization upgraded to premium service")
     }
     catch(err){

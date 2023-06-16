@@ -1,5 +1,5 @@
 import { Environment } from "../Constants/environment";
-import { Organization } from "../Model/Organization";
+import { Group } from "../Model/Group";
 import { User } from "../Model/User";
 import { Tag } from "../Model/Tag";
 import { Member } from "../Model/Member";
@@ -22,45 +22,38 @@ export const Repository = Object.freeze({
         },
     },
 
-    organizations: <Table<Organization>>{
-        create: async (organization: Organization): Promise<string> => {
-            const org: any = organization
-            delete org["members"]
-            await db.collection("organizations").doc(organization.organization_name).set(org)
-            await db.collection("organization_members").doc(organization.organization_name).set({})
+    groups: <Table<Group>>{
+        create: async (group: Group): Promise<string> => {
+            await db.collection("groups").doc(group.organization).set(group)
             return ""
         },
-        read: async (organizationName: string): Promise<Organization> => {
-            const organization = (await db.collection("organizations").doc(organizationName).get()).data() as Organization | undefined
+        read: async (organizationName: string): Promise<Group | undefined> => {
+            const organization = (await db.collection("groups").doc(organizationName).get()).data() as Group | undefined
             if(organization === undefined){
                 throw new Error("organization was not found")
             }
             return organization  
         },
-        update: async (organizationName: string, organization: Organization): Promise<void> => {
-            const organizationObj = (await db.collection("organizations").doc(organizationName).get()).data() as Organization | undefined
-            const members = (await db.collection("organization_members").doc(organizationName).get()).data() as Record<string, boolean> | undefined
-            if(organizationObj === undefined || members === undefined){
+        update: async (organization: string, group: Group): Promise<void> => {
+            const groupObj = (await db.collection("groups").doc(organization).get()).data() as Group | undefined
+            const members = (await db.collection("group_members").doc(organization).get()).data() as Record<string, boolean> | undefined
+            if(groupObj === undefined || members === undefined){
                 throw new Error("organization or members object was not found")
             }
-            const org: any = organization
-            delete org["members"]
-
-            await db.collection("organizations").doc(organization.organization_name).set(org)
-            await db.collection("organization_members").doc(organization.organization_name).set(members)
+            await db.collection("groups").doc(group.organization).set(group)
         },
         delete: async (organizationName: string): Promise<void> => {
-            await db.collection("organizations").doc(organizationName).delete()
+            await db.collection("groups").doc(organizationName).delete()
         },
     },
 
-    organization_members: {
+    group_members: {
         create: async (organizationName: string, member: Member): Promise<string> => {
-            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
+            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
             return member.username
         },
         read: async (organizationName: string, member: string): Promise<Member | undefined> => {
-            return (await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member).get()).data() as Member | undefined
+            return (await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member).get()).data() as Member | undefined
         },
         readAll: async (organizationName: string, filter: string, offset: number, limit: number = 30): Promise<Array<Member>> => {
             if(limit <= 0 || limit > 30){
@@ -69,7 +62,7 @@ export const Repository = Object.freeze({
             if(offset < 0){
                 offset = 0
             }
-            const membersSnapshot = await db.collection("organization_members")
+            const membersSnapshot = await db.collection("group_members")
                 .doc(organizationName)
                 .collection(organizationName)
                 .offset(offset).limit(limit)
@@ -84,7 +77,7 @@ export const Repository = Object.freeze({
             return result
         },
         readLength: async (organizationName: string): Promise<number> => {
-            const snapshot = await db.collection("organization_members")
+            const snapshot = await db.collection("group_members")
                 .doc(organizationName)
                 .collection(organizationName)
                 .count()
@@ -93,10 +86,10 @@ export const Repository = Object.freeze({
             return snapshot.data().count
         },
         update: async (organizationName: string, member: Member) =>  {
-            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
+            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
         },
         delete: async (organizationName: string, member: string) =>  {
-            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member).delete()
+            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member).delete()
         },
     },
 
