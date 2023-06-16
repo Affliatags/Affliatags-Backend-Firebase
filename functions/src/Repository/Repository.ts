@@ -56,35 +56,47 @@ export const Repository = Object.freeze({
 
     organization_members: {
         create: async (organizationName: string, member: Member): Promise<string> => {
-            const docRef = await db.collection("organization_members").doc(organizationName)
-            await docRef.update({
-                [member.username]: member
-            })
+            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
             return member.username
         },
         read: async (organizationName: string, member: string): Promise<Member | undefined> => {
-            const members =  (await db.collection("organization_members").doc(organizationName).get()).data() as Record<string, Member>
-            if(members === undefined){
-                return undefined
-            }
-            return members[member]
+            return (await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member).get()).data() as Member | undefined
         },
-        readAll: async (organizationName: string): Promise<Record<string, Member>> => {
-            const members = (await db.collection("organization_members").doc(organizationName).get()).data() as Record<string, Member>
-            if (members === undefined){
-                return {}
+        readAll: async (organizationName: string, filter: string, offset: number, limit: number = 30): Promise<Array<Member>> => {
+            if(limit <= 0 || limit > 30){
+                limit = 30
             }
-            return members
-        }, 
-        update: async (organizationName: string, members: Record<string, Member>) =>  {
-            await db.collection("organization_members").doc(organizationName).set(members)
-        },
-
-        delete: async (organizationName: string, member: string) =>  {
-            const docRef = await db.collection("organization_members").doc(organizationName)
-            await docRef.update({
-                [member]: firestore.FieldValue.delete()
+            if(offset < 0){
+                offset = 0
+            }
+            const membersSnapshot = await db.collection("organization_members")
+                .doc(organizationName)
+                .collection(organizationName)
+                .offset(offset).limit(limit)
+                .where("username", ">=", filter)
+                .where("username", "<=", filter + "\uf8ff")
+                .get()
+            const result: Array<Member> = []
+            membersSnapshot.docs.forEach(doc => {
+                const docData = doc.data() as Member
+                result.push(docData)
             })
+            return result
+        },
+        readLength: async (organizationName: string): Promise<number> => {
+            const snapshot = await db.collection("organization_members")
+                .doc(organizationName)
+                .collection(organizationName)
+                .count()
+                .get()
+
+            return snapshot.data().count
+        },
+        update: async (organizationName: string, member: Member) =>  {
+            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
+        },
+        delete: async (organizationName: string, member: string) =>  {
+            await db.collection("organization_members").doc(organizationName).collection(organizationName).doc(member).delete()
         },
     },
 

@@ -118,6 +118,15 @@ export const Environment = Object.freeze({
         }
         return enableCaptcha
     },
+    getEnablePremium: (): boolean => {
+        const enablePremium: boolean = process.env.FUNCTIONS_EMULATOR !== "true" 
+            ? functions.config().environment.ENABLE_PREMIUM === "true"
+            : process.env.ENABLE_PREMIUM === "true"
+        if(enablePremium === undefined){
+            throw new Error("environment variable 'ENABLE_PREMIUM' is not defined")
+        }
+        return enablePremium
+    },
     getEnableCardPayment: (): boolean => {
         const enableCardPayment: boolean = process.env.FUNCTIONS_EMULATOR !== "true" 
             ? functions.config().environment.ENABLE_CARD_PAYMENTS === "true"

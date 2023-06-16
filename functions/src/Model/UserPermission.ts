@@ -6,4 +6,6 @@ export interface UserPermissions {
         UPDATE: boolean,
         DELETE: boolean,
     }
+    allowGenerateTags: boolean,
+    allowScanTags: boolean,
 }

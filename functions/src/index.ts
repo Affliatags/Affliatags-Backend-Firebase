@@ -16,6 +16,8 @@ import { DealsDTO } from "./DTO/DealsDTO";
 import { userValidations } from "./Util/validations/userValidations";
 import { organizationValidations } from "./Util/validations/organizationValidations";
 import { ipBlocker } from "./Util/middleware/ipBlocker";
+import { memberValidations } from "./Util/validations/memberValidations";
+import { MemberService } from "./Service/MemberService";
 
 const app = express()
 app.use(express.json({
@@ -58,7 +60,10 @@ app.get(routes.generateTag, async (req, res) => {
         }
         const  jwt: JWT = UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])
         const organizationName: string = req.params.organization
-        const tag: string = await OrganizationService.generateTag(jwt.user, organizationName)
+        const description: string = req.params.description
+        const captchaResponse: string = req.params.captchaResponse
+        const expiration: number = Number(req.params.expiration)
+        const tag: string = await OrganizationService.generateTag(jwt.user, organizationName, description, expiration, captchaResponse)
         res.send({ tag })
     }
     catch(err){
@@ -72,6 +77,12 @@ app.get(routes.generateTag, async (req, res) => {
                 break
             case "invalid organization name provided":
                 res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)
+                break
+            case "invalid tag description provided":
+                res.status(400).send(`invalid instagram provided. format must match regex: ${memberValidations.tag_description}`)
+                break
+            case "invalid expiration provided":
+                res.status(400).send(`invalid expiration provided. format must match regex: ${organizationValidations.creation_date}`)
                 break
             default:
                 logger(error.message)
@@ -116,7 +127,10 @@ app.post(routes.createOrganization, async (req, res) => {
         }        
         const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
         const organizationName: string = req.body.organizationName
-        await OrganizationService.createOrganization(organizationName, username)
+        const instagram: string = req.body.instagram
+        const captchaResponse: string = req.body.captchaResponse
+        const tagExpiration: number = Number(req.body.tagExpiration)
+        await OrganizationService.createOrganization(organizationName, username, instagram, tagExpiration, captchaResponse)
         res.status(201).send()
     }
     catch(err){
@@ -130,6 +144,9 @@ app.post(routes.createOrganization, async (req, res) => {
                 break
             case "invalid username provided":
                 res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
+                break
+            case "invalid instagram name provided":
+                res.status(400).send(`invalid instagram provided. format must match regex: ${organizationValidations.instagram}`)
                 break
             case "invalid organization name provided":
                 res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)                
@@ -198,11 +215,13 @@ app.post(routes.addMember, async (req, res) => {
         const username: string = req.body.username
         const permissions: UserPermissions = req.body.permissions
         const organizationName: string = req.params.organization
+        const tagDescription: string = req.body.tag_description
 
         const member: Member = {
             username,
             organization: organizationName,
             permissions,
+            tag_description: tagDescription,
             tags: {
                 tag_count: 0,
                 timestamp: Date.now(),
@@ -215,7 +234,7 @@ app.post(routes.addMember, async (req, res) => {
         }
     
         const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-        await OrganizationService.addMember(jwt, member)
+        await MemberService.addMember(jwt, member)
         res.status(201).send()
     }
     catch(err){
@@ -233,18 +252,50 @@ app.post(routes.addMember, async (req, res) => {
             case "member is existing user":
                 res.status(400).send("unable to set password, member is an existing user. Include 'confirm' key in request body to confirm")
                 break
+            case "invalid tag description provided":
+                res.status(400).send(`invalid tag description provided. format must match regex: ${memberValidations.tag_description}`)
+                break
             case "invalid username provided":
                 res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
                 break
             case "invalid organization name provided":
                 res.status(400).send(`invalid organization name provided. format must match regex: ${organizationValidations.organization_name}`)
-                break
+                break             
             default:
                 logger(error.message)
                 res.status(500).send("internal server error")
                 break
         }
     }
+})
+
+app.get(routes.readMembers, async (req, res) => {
+    const filter = String(req.query.filter)
+    const offset = Number(req.query.offset)
+    const limit = Number(req.query.limit)
+    const organizationName: string = req.params.organization
+
+    if(typeof(req.headers.authorization) !== "string"){
+        throw new Error("unauthorized")
+    }        
+    const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
+    const members = await MemberService.readMembers(jwt, organizationName, filter, offset, limit)
+    res.status(200).send(members)
+})
+
+app.put(routes.updateMember, async (req, res) => {
+    const permissions: UserPermissions = req.body.permissions
+    const tagDescription: string = req.body.tag_description
+    const organizationName: string = req.params.organization
+    const member: string = req.params.member
+
+    if(typeof(req.headers.authorization) !== "string"){
+        throw new Error("unauthorized")
+    }        
+
+    const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
+    await MemberService.updateMember(jwt, organizationName, member, permissions, tagDescription)
+    res.status(200).send()
 })
 
 app.delete(routes.deleteMember, async (req, res) => {
@@ -255,7 +306,7 @@ app.delete(routes.deleteMember, async (req, res) => {
             throw new Error("unauthorized")
         }        
         const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-        await OrganizationService.deleteMember(jwt, organization, username)
+        await MemberService.deleteMember(jwt, organization, username)
         res.status(200).send()
     }
     catch(err){
@@ -272,7 +323,7 @@ app.delete(routes.deleteMember, async (req, res) => {
     }
 })
 
-app.post(routes.premium, async (req, res) => {
+Environment.getEnablePremium() && app.post(routes.premium, async (req, res) => {
     try{
         const organizationName: string = req.params.organization
         const subscriptionDuration: number = req.body.duration
@@ -301,7 +352,7 @@ app.post(routes.premium, async (req, res) => {
     }
 })
 
-app.get(routes.deals, async (req, res) => {
+Environment.getEnablePremium() && app.get(routes.deals, async (req, res) => {
     try{
         const deals: DealsDTO = {
             silver: Environment.getSilverDealCost(),
@@ -320,6 +371,11 @@ app.get(routes.deals, async (req, res) => {
                 break
         }
     }
+})
+
+app.get(routes.getLatestAppVersion, (req, res) => {
+    // TODO: Fetch latest app version from the google play store instead
+    res.send("1.0.0")
 })
 
 exports.api = functions.https.onRequest(app)

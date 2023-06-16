@@ -10,6 +10,9 @@ export const routes = Object.freeze({
     verifyTagWeb: apiPrefix + "/tags/:organization/verifyweb/:tag",
     premium: apiPrefix + "/organizations/:organization/premium",
     addMember: apiPrefix + "/organizations/:organization/members",
+    updateMember: apiPrefix + "/organizations/:organization/members/:member",
+    readMembers: apiPrefix + "/organizations/:organization/members",
     deleteMember: apiPrefix + "/organizations/:organization/members/:member",
     deals: apiPrefix + "/deals",
+    getLatestAppVersion: "/latestAppVersion"
 })
