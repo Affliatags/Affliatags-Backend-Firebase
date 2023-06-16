@@ -15,5 +15,6 @@ export const groupValidations: Record<keyof typeof group, RegExp | undefined | a
     tags: {
         tag_count: /^[0-9]{1,}$/,
         timestamp: /^[0-9]{1,}$/,
-    }
+    },
+    instagramVerificationCode: undefined
 })

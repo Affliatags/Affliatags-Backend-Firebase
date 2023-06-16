@@ -36,9 +36,8 @@ export const Repository = Object.freeze({
         },
         update: async (organization: string, group: Group): Promise<void> => {
             const groupObj = (await db.collection("groups").doc(organization).get()).data() as Group | undefined
-            const members = (await db.collection("group_members").doc(organization).get()).data() as Record<string, boolean> | undefined
-            if(groupObj === undefined || members === undefined){
-                throw new Error("organization or members object was not found")
+            if(groupObj === undefined){
+                throw new Error("group object was not found")
             }
             await db.collection("groups").doc(group.organization).set(group)
         },

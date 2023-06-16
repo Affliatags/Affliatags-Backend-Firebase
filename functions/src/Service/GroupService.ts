@@ -14,15 +14,12 @@ import { userValidations } from "../Util/validations/userValidations"
 
 export const GroupService = Object.freeze({
 
-    createGroup: async (organization: string, username: string, instagram: string, tagExpiration: number, captchaResponse?:string): Promise<string> => {
+    createGroup: async (username: string, organization: string, tagExpiration: number, captchaResponse?:string): Promise<string> => {
         if(userValidations.username?.test(username) === false){
             throw new Error("invalid username provided")
         }
         if(groupValidations.organization?.test(organization) === false){
             throw new Error("invalid organization name provided")
-        }
-        if(groupValidations.instagram?.test(instagram) === false){
-            throw new Error("invalid instagram name provided")
         }
         const user: User = await Repository.users.read(username)
 
@@ -53,7 +50,7 @@ export const GroupService = Object.freeze({
             organization,
             owner: username,
             memberCount: 0,
-            instagram,
+            instagram: null,
             creation_date: Date.now(),
             tags: {
                 tag_count: 0,
@@ -64,6 +61,7 @@ export const GroupService = Object.freeze({
                 last_renewal_date: null,
                 expiration_date: Date.now() - 1000
             },
+            instagramVerificationCode: null
         }
 
         const result = await Repository.groups.create(group)
@@ -71,6 +69,52 @@ export const GroupService = Object.freeze({
         await Repository.users.create(user)
 
         return result
+    },
+
+    addGroupInstagram: async (ownerUsername: string, organization: string, instagram: string): Promise<string | undefined> => {
+        if(groupValidations.instagram?.test(instagram) === false){
+            throw new Error("invalid instagram name provided")
+        }
+        const group: Group = await Repository.groups.read(organization)
+        if(group.owner !== ownerUsername){
+            throw new Error("unauthorized to perform this action")
+        }
+        if(group.instagramVerificationCode === undefined || group.instagramVerificationCode === null || Date.now() >= group.instagramVerificationCode.expires){
+            const verificationCode = uuidv4()
+            group.instagramVerificationCode = {
+                code: verificationCode,
+                expires: Date.now() + 300000
+            }
+            await Repository.groups.update(group.organization, group)
+            return verificationCode
+        }
+        const response: Response = await fetch(`https://www.instagram.com/api/v1/users/web_profile_info/?username=${instagram}`, {
+            "credentials": "include",
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/113.0",
+                "Accept": "*/*",
+                "Accept-Language": "en-US,en;q=0.5",
+                "X-CSRFToken": "WvuAlUWMfrljSlWQob1QzTIO5EzZgVom",
+                "X-IG-App-ID": "936619743392459",
+                "X-ASBD-ID": "129477",
+                "X-IG-WWW-Claim": "0",
+                "X-Requested-With": "XMLHttpRequest",
+                "Alt-Used": "www.instagram.com",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin"
+            },
+            "referrer": `https://www.instagram.com/${instagram}/`,
+            "method": "GET",
+            "mode": "cors"
+        });
+        const responseJSON = await response.json()
+        if(String(responseJSON["data"]["user"]["biography"]).indexOf(group.instagramVerificationCode.code) !== -1){
+            group.instagram = instagram
+            await Repository.groups.update(group.organization, group)
+            return undefined
+        }
+        throw new Error("pending verification code not found on instagram page")
     },
 
     readGroup: async (username: string, organization: string): Promise<Group> => {

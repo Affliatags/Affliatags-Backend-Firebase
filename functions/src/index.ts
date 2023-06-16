@@ -127,10 +127,9 @@ app.post(routes.createGroup, async (req, res) => {
         }        
         const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
         const organization: string = req.body.organization
-        const instagram: string = req.body.instagram
         const captchaResponse: string = req.body.captchaResponse
         const tagExpiration: number = req.body.tagExpiration
-        await GroupService.createGroup(organization, username, instagram, tagExpiration, captchaResponse)
+        await GroupService.createGroup(username, organization, tagExpiration, captchaResponse)
         res.status(201).send()
     }
     catch(err){
@@ -153,6 +152,55 @@ app.post(routes.createGroup, async (req, res) => {
                 break
             case "captcha is required":
                 res.status(400).send("captcha is required")
+                break
+            default:
+                logger(error.message)
+                res.status(500).send("internal server error")
+                break
+        }
+    }
+})
+
+app.post(routes.addGroupInstagram, async (req, res) => {
+    try{
+        if(typeof(req.headers.authorization) !== "string" || req.headers.authorization.split(" ").length !== 2){
+            throw new Error("bearer auth token is missing")
+        }        
+        const username: string = (await UserService.verifyAuthToken(req.headers.authorization.split(" ")[1])).user
+        const organization: string = req.params.organization
+        const instagram: string = req.body.instagram
+        const verificationCode: string | undefined = await GroupService.addGroupInstagram(username, organization, instagram)
+        if(verificationCode !== undefined){
+            res.status(200).send({  
+                verificationCode,
+                instructions: "add verification code to instagram page bio and resend this request to verify"
+            })
+        }
+        res.status(201).send()
+    }
+    catch(err){
+        const error: Error = err as Error
+        switch(error.message){
+            case "unauthorized":
+                res.status(401).send("unauthorized")
+                break
+            case "organization already exists":
+                res.status(400).send("organization already exists")
+                break
+            case "invalid username provided":
+                res.status(400).send(`invalid username provided. format must match regex: ${userValidations.username}`)
+                break
+            case "invalid instagram name provided":
+                res.status(400).send(`invalid instagram provided. format must match regex: ${groupValidations.instagram}`)
+                break
+            case "invalid organization name provided":
+                res.status(400).send(`invalid organization name provided. format must match regex: ${groupValidations.organization}`)                
+                break
+            case "captcha is required":
+                res.status(400).send("captcha is required")
+                break
+            case "pending verification code not found on instagram page":
+                res.status(400).send(`verification code not found on instagram page`)                
                 break
             default:
                 logger(error.message)
@@ -233,7 +281,7 @@ app.post(routes.addMember, async (req, res) => {
         }
     
         const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-        await MemberService.addMember(jwt, organization, member)
+        await MemberService.addMember(jwt.user, organization, member)
         res.status(201).send()
     }
     catch(err){
@@ -278,7 +326,7 @@ app.get(routes.readMembers, async (req, res) => {
         throw new Error("unauthorized")
     }        
     const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-    const members = await MemberService.readMembers(jwt, organization, filter, offset, limit)
+    const members = await MemberService.readMembers(jwt.user, organization, filter, offset, limit)
     res.status(200).send(members)
 })
 
@@ -293,7 +341,7 @@ app.put(routes.updateMember, async (req, res) => {
     }        
 
     const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-    await MemberService.updateMember(jwt, organization, member, permissions, tagDescription)
+    await MemberService.updateMember(jwt.user, organization, member, permissions, tagDescription)
     res.status(200).send()
 })
 
@@ -305,7 +353,7 @@ app.delete(routes.deleteMember, async (req, res) => {
             throw new Error("unauthorized")
         }        
         const jwt: JWT = UserService.verifyAuthToken(req.headers.authorization?.split(" ")[1])
-        await MemberService.deleteMember(jwt, organization, username)
+        await MemberService.deleteMember(jwt.user, organization, username)
         res.status(200).send()
     }
     catch(err){

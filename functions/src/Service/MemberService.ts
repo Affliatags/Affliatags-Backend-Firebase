@@ -1,5 +1,4 @@
 import { Environment } from "../Constants/environment"
-import { JWT } from "../Model/JWT"
 import { Member } from "../Model/Member"
 import { Group } from "../Model/Group"
 import { User } from "../Model/User"
@@ -9,7 +8,7 @@ import { memberValidations } from "../Util/validations/memberValidations"
 import { userValidations } from "../Util/validations/userValidations"
 
 export const MemberService = Object.freeze({
-    addMember: async (jwt: JWT, organization: string, member: Member): Promise<void> => {
+    addMember: async (ownerUsername: string, organization: string, member: Member): Promise<void> => {
         if(userValidations.username?.test(member.username) === false){
             throw new Error("invalid username provided")
         }
@@ -26,41 +25,43 @@ export const MemberService = Object.freeze({
         }
         
         const currentMember: Member | undefined = await Repository.group_members.read(group.organization, member.username)
-        if (group.owner !== jwt.user && (currentMember === undefined || currentMember.permissions.accounts.CREATE === false)){
+        if (group.owner !== ownerUsername && (currentMember?.permissions?.accounts?.CREATE ?? false)){
             throw new Error("not authorized to perform this action")
         }
         await Repository.group_members.create(organization, member)
     },
-    readMembers: async (jwt: JWT, organizatioName: string, filter: string, offset: number, limit: number): Promise<Array<Member>> => {
-        const group: Group = await Repository.groups.read(organizatioName)
-        const member: Member | undefined = await Repository.group_members.read(organizatioName, jwt.user)
-        if(jwt.user !== group.owner && member === undefined){
+    readMembers: async (username: string, organization: string, filter: string, offset: number, limit: number): Promise<Array<Member>> => {
+        const group: Group = await Repository.groups.read(organization)
+        const member: Member | undefined = await Repository.group_members.read(organization, username)
+        if(group.owner !== username && member === undefined){
             throw new Error("not authorized to perform this action")
         }
-        return await Repository.group_members.readAll(organizatioName, filter, offset, limit)
+        return await Repository.group_members.readAll(organization, filter, offset, limit)
     },
-    updateMember: async (jwt: JWT, organizatioName: string, username: string, permissions: UserPermissions, tagDescription: string) => {
-        const owner: User | undefined = await Repository.users.read(jwt.user)
-        const group: Group = await Repository.groups.read(organizatioName)
-        const memberUpdatePermission: boolean = (await Repository.group_members.read(organizatioName, jwt.user))?.permissions?.accounts?.UPDATE ?? false
+    updateMember: async (ownerUsername: string, organization: string, memberUsername: string, permissions: UserPermissions, tagDescription: string) => {
+        const owner: User | undefined = await Repository.users.read(ownerUsername)
+        const group: Group = await Repository.groups.read(organization)
+        const member: Member | undefined = await Repository.group_members.read(organization, memberUsername)
+        const memberUpdatePermission: boolean = member?.permissions?.accounts?.UPDATE ?? false
         if(owner?.username !== group.owner && memberUpdatePermission === false){
             throw new Error("not authorized to perform this action")
         }
-        const member: Member | undefined = await Repository.group_members.read(organizatioName, username)
+        
         if(member === undefined){
             throw new Error("member not found")
         }
         member.permissions = permissions
         member.tag_description = tagDescription
-        await Repository.group_members.update(organizatioName, member)
+        await Repository.group_members.update(organization, member)
     },
-    deleteMember: async (jwt: JWT, organizatioName: string, member: string) => {
-        const owner = await Repository.users.read(jwt.user)
-        const group: Group | undefined = await Repository.groups.read(organizatioName)
-        const memberDeletePermission = (await Repository.group_members.read(organizatioName, jwt.user))?.permissions.accounts.DELETE ?? false
+    deleteMember: async (ownerUsername: string, organization: string, member: string) => {
+        const owner = await Repository.users.read(ownerUsername)
+        const group: Group | undefined = await Repository.groups.read(organization)
+        const memberInfo: Member | undefined = await Repository.group_members.read(organization, member)
+        const memberDeletePermission = memberInfo?.permissions.accounts.DELETE ?? false
         if(owner?.username !== group?.owner && memberDeletePermission === false){
             throw new Error("not authorized to perform this action")
         }
-        await Repository.group_members.delete(organizatioName, member)
+        await Repository.group_members.delete(organization, member)
     },
 })
