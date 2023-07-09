@@ -11,14 +11,16 @@ import { Tag } from "../Model/Tag"
 import { DealDurations } from "../Constants/DealDurations"
 import { groupValidations } from "../Util/validations/groupValidations"
 import { userValidations } from "../Util/validations/userValidations"
+import { memberValidations } from "../Util/validations/memberValidations"
+import { GroupDTO } from "../DTO/GroupDTO"
 
 export const GroupService = Object.freeze({
 
-    createGroup: async (username: string, organization: string, tagExpiration: number, captchaResponse?:string): Promise<string> => {
-        if(userValidations.username?.test(username) === false){
+    createGroup: async (username: string, organization: string, captchaResponse?:string): Promise<string> => {
+        if(userValidations.username?.test(username) !== true){
             throw new Error("invalid username provided")
         }
-        if(groupValidations.organization?.test(organization) === false){
+        if(groupValidations.organization?.test(organization) !== true){
             throw new Error("invalid organization name provided")
         }
         const user: User = await Repository.users.read(username)
@@ -46,20 +48,26 @@ export const GroupService = Object.freeze({
             }
         }
 
+        const groupCount = await Repository.groups.readOwnerGroupsLength(username)
+        if(groupCount >= 10){
+            throw new Error("maximum groups for user reached")
+        }
+
         const group: Group = {
+            // TODO: Add logo url
+            logo: "",
             organization,
             owner: username,
             memberCount: 0,
             instagram: null,
-            creation_date: Date.now(),
+            creationDate: Date.now(),
             tags: {
-                tag_count: 0,
+                tagCount: 0,
                 timestamp: 0,
-                expiration: tagExpiration,
             },
             subscription: {
-                last_renewal_date: null,
-                expiration_date: Date.now() - 1000
+                lastRenewalDate: null,
+                expirationDate: Date.now() - 1000
             },
             instagramVerificationCode: null
         }
@@ -72,10 +80,13 @@ export const GroupService = Object.freeze({
     },
 
     addGroupInstagram: async (ownerUsername: string, organization: string, instagram: string): Promise<string | undefined> => {
-        if(groupValidations.instagram?.test(instagram) === false){
+        if(groupValidations.instagram?.test(instagram) !== true){
             throw new Error("invalid instagram name provided")
         }
-        const group: Group = await Repository.groups.read(organization)
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
         if(group.owner !== ownerUsername){
             throw new Error("unauthorized to perform this action")
         }
@@ -117,44 +128,34 @@ export const GroupService = Object.freeze({
         throw new Error("pending verification code not found on instagram page")
     },
 
-    readGroup: async (username: string, organization: string): Promise<Group> => {
-        const group: Group = await Repository.groups.read(organization)
-        group.tags.expiration = Environment.getEnablePremium() ? group.tags.expiration : (new Date("'Sat Dec 31 9999'")).getTime()
+    readGroup: async (username: string, organization: string): Promise<GroupDTO> => {
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
+        if(Date.now() - group.tags.timestamp >= TimePeriods.HOUR){
+            group.tags.tagCount = 0
+            group.tags.timestamp = Date.now()
+        }        
         const isMember: boolean = Repository.group_members.read(organization, username) === undefined
-        if(!isMember && group.owner !== username){
-            throw new Error("insufficient permissions")
+        if(isMember === false && group.owner !== username){
+            throw new Error("unauthorized")
         }
         group.memberCount = await Repository.group_members.readLength(organization)
-        return group
+        Repository.groups.update(organization, group)
+        return GroupDTO.fromGroup(group)
     },
 
-    readOrganizations: async (username: string): Promise<{[key: string]: {
-        tags: {
-            tagCount: number,
-            timestamp: number,
-        },
-        memberCount: number
-    }}> => {
-        const response:{[key: string]: {
-            tags: {
-                tagCount: number,
-                timestamp: number,
-            },
-            memberCount: number
-        }} = {}
-        const user = await Repository.users.read(username)
-        const organizations = Object.keys(user.organizations)
-        for(const organization of organizations){
-            const orgInfo = await Repository.groups.read(organization)
-            response[organization] = {
-                tags: {
-                    tagCount: orgInfo.tags.tag_count, 
-                    timestamp: orgInfo.tags.timestamp
-                },
-                memberCount: await Repository.group_members.readLength(organization)
+    readGroups: async (username: string): Promise<Array<GroupDTO>> => {
+        const groups: Array<Group> = await Repository.groups.readOwnerGroups(username)
+        return groups.map(group => {
+            if(Date.now() - group.tags.timestamp >= TimePeriods.HOUR){
+                group.tags.tagCount = 0
+                group.tags.timestamp = Date.now()
             }
-        }
-        return response
+            Repository.groups.update(group.organization, group)
+            return GroupDTO.fromGroup(group)
+        })
     },
 
     // removeMember: async (jwt: JWT, organizationName: string, username: string) => {
@@ -173,14 +174,17 @@ export const GroupService = Object.freeze({
     // },
 
     upgradeToPremium: async (organization: string, duration: number, card: PaymentCard) => {
-        const group: Group = await Repository.groups.read(organization)
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
         group.subscription = {
-            last_renewal_date: Date.now(),
-            expiration_date: group.subscription.expiration_date === undefined || 
-                group.subscription.expiration_date === null || 
-                group.subscription.expiration_date <= Date.now() 
+            lastRenewalDate: Date.now(),
+            expirationDate: group.subscription.expirationDate === undefined || 
+                group.subscription.expirationDate === null || 
+                group.subscription.expirationDate <= Date.now() 
                     ? Date.now() + duration 
-                    : group.subscription.expiration_date + duration,
+                    : group.subscription.expirationDate + duration,
         }
 
         const dealDurations: Record<string, boolean> = {}
@@ -211,140 +215,153 @@ export const GroupService = Object.freeze({
         await Repository.groups.update(organization, group)
     },
 
-    generateTag: async (username: string, organizationName: string, description: string, expiration: number, captchaResponse?:string): Promise<string> => {
-        if(userValidations.username?.test(username) === false){
+    generateTag: async (username: string, organization: string, description: string, expiration: number | null, captchaResponse?:string): Promise<string> => {
+        if(userValidations.username?.test(username) !== true){
             throw new Error("invalid username provided")
         }
-        if(groupValidations.organization?.test(organizationName) === false){
+        if(groupValidations.organization?.test(organization) !== true){
             throw new Error("invalid organization name provided")
         }
-        if(groupValidations.organization?.test(organizationName) === false){
+        if(memberValidations.tagDescription?.test(description) !== true){
             throw new Error("invalid tag description provided")
         }
-        if(groupValidations.creation_date?.test(expiration) === false){
+        if(expiration !== null && (groupValidations.creationDate?.test(expiration) !== true || expiration <= Date.now())){
             throw new Error("invalid expiration provided")
         }
 
-        const group = await Repository.groups.read(organizationName)
-        let memberInfo: Member | undefined = await Repository.group_members.read(organizationName, username)
+        const group = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
+        
+        let memberInfo: Member | undefined = await Repository.group_members.read(organization, username)
+        
+        if(group.owner !== username && memberInfo === undefined){
+            throw new Error("unauthorized")
+        }
 
-        if(memberInfo === undefined){
+        if(memberInfo !== undefined && memberInfo.permissions.allowGenerateTags !== true){
             throw new Error("unauthorized")
         }
 
         const token: Tag = {
             token: uuidv4(),
-            description,
-            created_at: Date.now(),
-            expiration: group.tags.expiration == null ? null : Date.now() + group.tags.expiration
+            description: memberInfo?.tagDescription ?? "",
+            createdBy: memberInfo === undefined ? group.owner : memberInfo.username,
+            createdAt: Date.now(),
+            expiration: memberInfo === null || memberInfo === undefined || memberInfo.tagExpiration === null ? null : Date.now() + memberInfo.tagExpiration
         }
 
         if(Date.now() - group.tags.timestamp >= TimePeriods.HOUR){
-            group.tags.tag_count = 0
+            group.tags.tagCount = 0
             group.tags.timestamp = Date.now()
         }
 
         if(
-            group.subscription.expiration_date !== null && 
-            Date.now() >= group.subscription.expiration_date && 
-            group.tags.tag_count >= Environment.getMaxUnsubscribedTagCountPerHour() &&
-            Environment.getEnablePremium() === false
+            group.subscription.expirationDate !== null && 
+            Date.now() >= group.subscription.expirationDate && 
+            group.tags.tagCount >= Environment.getMaxUnsubscribedTagCountPerHour() &&
+            Environment.getEnablePremium() !== true
         ){
             throw new Error("organization token quota exceeded")
         }        
 
-        if(username === group.owner && memberInfo === undefined){
-            memberInfo = {
-                username,
-                permissions :{ 
-                    tokensPerHour: 6,
-                    accounts: {
-                        CREATE: false,
-                        READ: false,
-                        UPDATE: false,
-                        DELETE: false,
-                    },
-                    allowGenerateTags: true,
-                    allowScanTags: false,
-                },
-                tag_description: description,
-                tags: {
-                    tag_count: 0,
-                    timestamp: Date.now(),
-                },
-                creation_date: Date.now(),   
-            }
-            await Repository.group_members.create(organizationName, memberInfo)
-        }
-        else if(memberInfo === undefined){
-            throw new Error("unauthorized")
+        if(username !== group.owner && memberInfo !== undefined  && (memberInfo.tagDescription !== description || memberInfo.tagExpiration !== expiration) && memberInfo.permissions.accounts.UPDATE !== true){
+            throw new Error("unauthorized to perform this action, cannot update tag description")
         }
 
         if(memberInfo !== undefined){
             if(Date.now() - memberInfo.tags.timestamp >= TimePeriods.HOUR){
-                memberInfo.tags.tag_count = 0
+                memberInfo.tags.tagCount = 0
                 memberInfo.tags.timestamp = Date.now()
             }
 
             if(
-                memberInfo.permissions.tokensPerHour !== null && 
+                memberInfo.permissions.tagsPerHour !== null && 
                 Date.now() - memberInfo.tags.timestamp < TimePeriods.HOUR && 
-                memberInfo.tags.tag_count >= memberInfo.permissions.tokensPerHour
+                memberInfo.tags.tagCount >= memberInfo.permissions.tagsPerHour ||
+                memberInfo.tags.tagGenerationLimit !== null && memberInfo.tags.totalTagCount >= memberInfo.tags.tagGenerationLimit
             ){
                 throw new Error("member token quota exceeded")
             }
 
-            memberInfo.tags.tag_count += 1
-            await Repository.group_members.create(organizationName, memberInfo)
+            memberInfo.tags.tagCount += 1
+            memberInfo.tags.totalTagCount += 1
+            await Repository.group_members.create(organization, memberInfo)
         }
 
-        const tags: Record<string, Tag> = await Repository.tags.readAll(organizationName)
+        const tags: Record<string, Tag> = await Repository.tags.readAll(organization)
         const tagsToBeRemoved: Array<string> = []
         let recentCreatedTagCount = 0
 
         for(const tag of Object.values(tags)){
-            if(Date.now() - tag.created_at <= TimePeriods.HOUR){
+            if(Date.now() - tag.createdAt <= TimePeriods.HOUR){
                 recentCreatedTagCount += 1
                 continue
             }
             tagsToBeRemoved.push(tag.token)
         }
 
-        Repository.tags.deleteOutdatedTagsFromIndexer(organizationName, tagsToBeRemoved)
+        Repository.tags.deleteOutdatedTagsFromIndexer(organization, tagsToBeRemoved)
         if(recentCreatedTagCount >= Environment.getMaxTagsPerHourUntilCaptchaRequired() && captchaResponse === undefined && Environment.getEnableCaptcha()){
             throw new Error("captcha is required")
         }
 
-        group.tags.tag_count += 1
-        await Repository.groups.update(organizationName, group)
-        await Repository.tags.create(organizationName, token)
+        group.tags.tagCount += 1
+        await Repository.groups.update(organization, group)
+        await Repository.tags.create(organization, token)
         return token.token
     },
 
-    verifyTag: async (username: string, organizationName: string, tag: string): Promise<boolean> => {
-        const tagInfo: Tag | undefined = await Repository.tags.read(organizationName, tag)
+    verifyTag: async (username: string, organization: string, tag: string): Promise<boolean> => {
+        const tagInfo: Tag | undefined = await Repository.tags.read(organization, tag)
 
-        const group = await Repository.groups.read(organizationName)
-        const member: Member | undefined = await Repository.group_members.read(organizationName, username)
-        if(group.owner !== username && (member === undefined || member.permissions.allowScanTags === false)){
+        const group = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
+
+        const member: Member | undefined = await Repository.group_members.read(organization, username)
+        if(group.owner !== username && (member === undefined || member.permissions.allowScanTags !== true)){
             throw new Error("unauthorized to perform this action")
+        }
+
+        if(member !== undefined && member.permissions.allowScanTags !== true){
+            throw new Error("unauthorized")
         }
 
         if(tagInfo !== undefined){
             if(tagInfo.expiration !== null && Date.now() >=  tagInfo.expiration){
                 return  false
             }
-            await Repository.tags.delete(organizationName, tag)
+            await Repository.tags.delete(organization, tag)
+            if(member !== undefined){
+                member.tags.redeemCount += 1
+                Repository.group_members.update(organization, member )
+            }
             return true
         }
         return false
     },
 
-    verifyTokenWeb: async (organizationName: string, token: string): Promise<boolean> => {
-        const tagInfo: Tag | undefined = await Repository.tags.read(organizationName, token)
+    resetTagRedeemCount: async (ownerUsername: string, organization: string, memberUsername: string) => {
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined || group.owner !== ownerUsername){
+            throw new Error("unauthorized")
+        }
+        const memberInfo: Member | undefined = await Repository.group_members.read(organization, memberUsername)
+        if(memberInfo === undefined){
+            throw new Error("invalid member provided")
+        }
+        memberInfo.tags.redeemCount = 0
+        await Repository.group_members.update(organization, memberInfo)
+    },
+
+    verifyTokenWeb: async (organization: string, token: string): Promise<boolean> => {
+        const tagInfo: Tag | undefined = await Repository.tags.read(organization, token)
 
         if(tagInfo !== undefined){
-            await Repository.tags.delete(organizationName, token)
+            await Repository.tags.delete(organization, token)
             return true
         }
         return false

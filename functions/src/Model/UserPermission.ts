@@ -1,5 +1,5 @@
 export interface UserPermissions {
-    tokensPerHour: 6 | 10 | 30 | 60 | null,
+    tagsPerHour: 6 | 10 | 30 | 60 | null,
     accounts: {
         CREATE: boolean,
         READ: boolean,

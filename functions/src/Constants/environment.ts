@@ -28,6 +28,13 @@ export const Environment = Object.freeze({
         }
         return maxUnsubscribedTagCountPerHour
     },
+    getMinSupportedClientVersion: (): string => {
+        const minSupportedClientVersion = process.env.FUNCTIONS_EMULATOR !== "true" ? functions.config().environment.MIN_SUPPORTED_CLIENT_VERSION : process.env.MIN_SUPPORTED_CLIENT_VERSION
+        if(minSupportedClientVersion === undefined){
+            throw new Error("JWT secret key not defined")
+        }
+        return minSupportedClientVersion        
+    },
     getSilverDealCost: (): number => {
         const dealCost: number = process.env.FUNCTIONS_EMULATOR !== "true" 
             ? Number(functions.config().environment.DEAL_COST_SILVER )

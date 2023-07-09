@@ -1,12 +1,16 @@
 import { UserPermissions } from "./UserPermission";
 
 export interface Member {
-    username: string,
-    permissions: UserPermissions,
-    creation_date: number,
-    tag_description: string,
+    username: string
+    permissions: UserPermissions
+    creationDate: number
+    tagDescription: string
+    tagExpiration: number | null
     tags: {
-        tag_count: number,
-        timestamp: number,
+        tagCount: number
+        redeemCount: number
+        tagGenerationLimit: number | null
+        totalTagCount: number
+        timestamp: number
     }
 }

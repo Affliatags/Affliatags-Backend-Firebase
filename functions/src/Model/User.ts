@@ -1,6 +1,7 @@
 export interface User {
+    profilePhoto: string | null,
     username: string,
     password: string,
     organizations: Record<string, number>,
-    creation_date: number,
+    creationDate: number,
 }

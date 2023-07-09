@@ -2,6 +2,8 @@
 const apiPrefix = "/api"
 export const routes = Object.freeze({
     auth: apiPrefix + "/auth",
+    getUser: apiPrefix + "/users/:user",
+    updateUser: apiPrefix + "/users",
     createGroup: apiPrefix + "/groups",
     readGroup: apiPrefix + "/groups/:organization",
     readGroups: apiPrefix + "/groups",
@@ -15,5 +17,9 @@ export const routes = Object.freeze({
     deleteMember: apiPrefix + "/groups/:organization/members/:member",
     deals: apiPrefix + "/deals",
     getLatestAppVersion: "/latestAppVersion",
-    addGroupInstagram: apiPrefix + "/groups/:organization/instagram" 
+    addGroupInstagram: apiPrefix + "/groups/:organization/instagram",
+    // resetTagRedeemCount: apiPrefix + "/groups/:organization/members/:member/resetRedeem",
+    resetTotalTagCount: apiPrefix + "/groups/:organization/members/:member/resetTotalTagCount",
+    checkClient: apiPrefix + "/client/verify",
+    open: apiPrefix + "/open",
 })

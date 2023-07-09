@@ -22,39 +22,52 @@ export const Repository = Object.freeze({
         },
     },
 
-    groups: <Table<Group>>{
+    groups: {
         create: async (group: Group): Promise<string> => {
             await db.collection("groups").doc(group.organization).set(group)
             return ""
         },
-        read: async (organizationName: string): Promise<Group | undefined> => {
-            const organization = (await db.collection("groups").doc(organizationName).get()).data() as Group | undefined
-            if(organization === undefined){
-                throw new Error("organization was not found")
-            }
-            return organization  
+        read: async (organization: string): Promise<Group | undefined> => {
+            const group = (await db.collection("groups").doc(organization).get()).data() as Group | undefined
+            return group  
+        },
+        readOwnerGroups: async (owner: string): Promise<Array<Group>> => {
+            const groupSnapshots =  await db.collection("groups").where("owner", "==", owner).orderBy("organization").get()
+            const result: Array<Group> = []
+            groupSnapshots.docs.forEach(doc => {
+                const docData = doc.data() as Group
+                result.push(docData)
+            })
+            return result
+        },
+        readOwnerGroupsLength: async (owner: string): Promise<number> => {
+            const groupSnapshots =  await db.collection("groups")
+            .where("owner", "==", owner)
+            .count()
+            .get()
+
+            return groupSnapshots.data().count
         },
         update: async (organization: string, group: Group): Promise<void> => {
             const groupObj = (await db.collection("groups").doc(organization).get()).data() as Group | undefined
-            if(groupObj === undefined){
-                throw new Error("group object was not found")
+            if(groupObj !== undefined){
+                await db.collection("groups").doc(group.organization).set(group)
             }
-            await db.collection("groups").doc(group.organization).set(group)
         },
-        delete: async (organizationName: string): Promise<void> => {
-            await db.collection("groups").doc(organizationName).delete()
+        delete: async (organization: string): Promise<void> => {
+            await db.collection("groups").doc(organization).delete()
         },
     },
 
     group_members: {
-        create: async (organizationName: string, member: Member): Promise<string> => {
-            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
+        create: async (organization: string, member: Member): Promise<string> => {
+            await db.collection("group_members").doc(organization).collection(organization).doc(member.username).set(member)
             return member.username
         },
-        read: async (organizationName: string, member: string): Promise<Member | undefined> => {
-            return (await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member).get()).data() as Member | undefined
+        read: async (organization: string, member: string): Promise<Member | undefined> => {
+            return (await db.collection("group_members").doc(organization).collection(organization).doc(member).get()).data() as Member | undefined
         },
-        readAll: async (organizationName: string, filter: string, offset: number, limit: number = 30): Promise<Array<Member>> => {
+        readAll: async (organization: string, filter: string, offset: number, limit: number = 30): Promise<Array<Member>> => {
             if(limit <= 0 || limit > 30){
                 limit = 30
             }
@@ -62,11 +75,12 @@ export const Repository = Object.freeze({
                 offset = 0
             }
             const membersSnapshot = await db.collection("group_members")
-                .doc(organizationName)
-                .collection(organizationName)
+                .doc(organization)
+                .collection(organization)
                 .offset(offset).limit(limit)
                 .where("username", ">=", filter)
                 .where("username", "<=", filter + "\uf8ff")
+                .orderBy("username")
                 .get()
             const result: Array<Member> = []
             membersSnapshot.docs.forEach(doc => {
@@ -75,49 +89,49 @@ export const Repository = Object.freeze({
             })
             return result
         },
-        readLength: async (organizationName: string): Promise<number> => {
+        readLength: async (organization: string): Promise<number> => {
             const snapshot = await db.collection("group_members")
-                .doc(organizationName)
-                .collection(organizationName)
+                .doc(organization)
+                .collection(organization)
                 .count()
                 .get()
 
             return snapshot.data().count
         },
-        update: async (organizationName: string, member: Member) =>  {
-            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member.username).set(member)
+        update: async (organization: string, member: Member) =>  {
+            await db.collection("group_members").doc(organization).collection(organization).doc(member.username).set(member)
         },
-        delete: async (organizationName: string, member: string) =>  {
-            await db.collection("group_members").doc(organizationName).collection(organizationName).doc(member).delete()
+        delete: async (organization: string, member: string) =>  {
+            await db.collection("group_members").doc(organization).collection(organization).doc(member).delete()
         },
     },
 
     tags: {
-        create: async (organizationName: string, tag: Tag): Promise<string> => {
-            let tags = (await db.collection("tags").doc(organizationName).get()).data() as Record<string, Tag>
+        create: async (organization: string, tag: Tag): Promise<string> => {
+            let tags = (await db.collection("tags").doc(organization).get()).data() as Record<string, Tag>
             tags = {
                 ...tags,
                 [tag.token]: tag
             }
-            await db.collection("tags").doc(organizationName).set(tags)
-            await db.collection("tags").doc(organizationName).collection(tag.token).doc(tag.token).set(tag)
+            await db.collection("tags").doc(organization).set(tags)
+            await db.collection("tags").doc(organization).collection(tag.token).doc(tag.token).set(tag)
             return tag.token
         },
-        read: async (organizationName: string, token: string): Promise<Tag | undefined> => {
-            return (await db.collection("tags").doc(organizationName).collection(token).doc(token).get()).data() as any
+        read: async (organization: string, token: string): Promise<Tag | undefined> => {
+            return (await db.collection("tags").doc(organization).collection(token).doc(token).get()).data() as any
         },
-        readAll: async (organizationName: string): Promise<Record<string, Tag>> => {
-            const tags = (await db.collection("tags").doc(organizationName).get()).data() as Record<string, Tag>
+        readAll: async (organization: string): Promise<Record<string, Tag>> => {
+            const tags = (await db.collection("tags").doc(organization).get()).data() as Record<string, Tag>
             return { ...tags }
         },
-        delete: async (organizationName: string, token: string): Promise<void> => {
-            const tags = (await db.collection("tags").doc(organizationName).get()).data() as Record<string, Tag>
+        delete: async (organization: string, token: string): Promise<void> => {
+            const tags = (await db.collection("tags").doc(organization).get()).data() as Record<string, Tag>
             delete tags[token]
-            await db.collection("tags").doc(organizationName).set(tags)
-            await db.collection("tags").doc(organizationName).collection(token).doc(token).delete()
+            await db.collection("tags").doc(organization).set(tags)
+            await db.collection("tags").doc(organization).collection(token).doc(token).delete()
         },
-        deleteOutdatedTagsFromIndexer: async (organizationName: string, tags: Array<string>) => {
-            const docRef = await db.collection("tags").doc(organizationName)
+        deleteOutdatedTagsFromIndexer: async (organization: string, tags: Array<string>) => {
+            const docRef = await db.collection("tags").doc(organization)
             for(const tag of tags){
                 await docRef.update({
                     [tag]: firestore.FieldValue.delete()
@@ -133,7 +147,7 @@ export const Repository = Object.freeze({
                 timestamp: Date.now()
             })
         },
-        read: async (ipAddress: string): Promise<{requestCount: number, timestamp: number}> => {
+        read: async (ipAddress: string): Promise<{requestCount: number, timestamp: number} | undefined> => {
             return (await db.collection("ip").doc(ipAddress).get()).data() as {requestCount: number, timestamp: number}
         },
         update: async (ipAddress: string, ipAddressDetails: {

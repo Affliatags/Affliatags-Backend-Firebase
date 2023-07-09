@@ -1,6 +1,7 @@
 export interface Tag {
     token: string
     description: string
-    created_at: number
+    createdBy: string
+    createdAt: number
     expiration: number | null
 }

@@ -8,26 +8,42 @@ import * as jwt from "jsonwebtoken"
 
 export const UserService = Object.freeze({
 
+    getUser: async (username: string): Promise<User | undefined> => {
+        const user: User | undefined = await Repository.users.read(username)
+        return user
+    },
+
+    updateUser: async (username: string, profilePhoto: string | null | undefined, password: string | undefined): Promise<void> => {
+        if(password !== undefined && userValidations.password?.test(password) !== true){
+            throw new Error("invalid password provided")
+        }
+        const user: User = await Repository.users.read(username)
+        user.profilePhoto = profilePhoto === undefined ? user.profilePhoto : profilePhoto
+        user.password = password === undefined ? user.password : await bcrypt.hash(password, 10)
+        await Repository.users.update(username, user)
+    },
+
     generateAuthToken: async (username: string, password: string): Promise<string> => {
         let user: User = await Repository.users.read(username)
-        if(userValidations.username?.test(username) === false){
+        if(userValidations.username?.test(username) !== true){
             throw new Error("invalid username provided")
         }
-        if(userValidations.password?.test(password) === false){
+        if(userValidations.password?.test(password) !== true){
             throw new Error("invalid password provided")
         }
 
         if(user === undefined){
             user = {
+                profilePhoto: null,
                 username,
                 password: await bcrypt.hash(password, 10),
                 organizations: {},
-                creation_date: Date.now()
+                creationDate: Date.now()
             }
             await Repository.users.create(user)
         }
 
-        if(await bcrypt.compare(password, user.password) === false){
+        if(await bcrypt.compare(password, user.password) !== true){
             throw new Error("invalid credentials")
         }
         const token: JWT = {
@@ -43,4 +59,10 @@ export const UserService = Object.freeze({
         return decodedToken as JWT
     },
 
+    checkIfUserExists: async (username: string): Promise<{creationDate: number} | null> => {
+        const user: User | undefined = await Repository.users.read(username)
+        return user === undefined ? null : {
+            creationDate: user.creationDate
+        }
+    }
 })
