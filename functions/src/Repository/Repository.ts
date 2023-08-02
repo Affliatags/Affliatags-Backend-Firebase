@@ -5,6 +5,7 @@ import { Tag } from "../Model/Tag";
 import { Member } from "../Model/Member";
 import * as admin from "firebase-admin"
 import * as firestore from 'firebase-admin/firestore'
+import { Redemption } from "../Model/Redemption";
 
 admin.initializeApp({ credential: admin.credential.cert(Environment.getFirebaseServiceAccountKey() as object) })
 const db = firestore.getFirestore()
@@ -77,7 +78,8 @@ export const Repository = Object.freeze({
             const membersSnapshot = await db.collection("group_members")
                 .doc(organization)
                 .collection(organization)
-                .offset(offset).limit(limit)
+                .offset(offset)
+                .limit(limit)
                 .where("username", ">=", filter)
                 .where("username", "<=", filter + "\uf8ff")
                 .orderBy("username")
@@ -138,6 +140,53 @@ export const Repository = Object.freeze({
                 })
             }
         },        
+    },
+
+    redemptions: {
+        create: async (organization: string, redemption: Redemption) => {
+            const currentDate = new Date()
+            await db.collection("redemptions").doc(organization).collection(`${currentDate.getMonth()}_${currentDate.getFullYear()}`).doc(redemption.username).set(redemption)
+            return redemption.username
+        },
+        read: async (organization: string, username: string, month: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, year: number): Promise<Redemption | undefined> => {
+            return (await db.collection("redemptions").doc(organization).collection(`${month}_${year}`).doc(username).get()).data() as Redemption | undefined
+        },
+        readAll: async (organization: string, month: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, year: number, filter: string, offset: number, limit: number): Promise<Array<{[username: string]: Redemption}>> => {
+            const result: Array<{[username: string]: Redemption}> = []
+            const redemptionsSnapshot = (await db.collection("redemptions").doc(organization).collection(`${month}_${year}`)
+            .offset(offset)
+            .limit(limit)
+            .where("username", ">=", filter)
+            .where("username", "<=", filter + "\uf8ff")
+            .get()).docs
+            if(redemptionsSnapshot === undefined){
+                return []
+            }            
+            redemptionsSnapshot.forEach(doc => {
+                const docData = doc.data() as {[username: string]: Redemption}
+                result.push(docData)
+            })
+            return result
+        },
+        readTotalRedemption: async (organization: string, month: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, year: number): Promise<number> => {
+            const redemptionsSnapshot = (await db.collection("redemptions").doc(organization).collection(`${month}_${year}`)
+            .get()).docs
+            let redemptionCount = 0
+            if(redemptionsSnapshot === undefined){
+                return redemptionCount
+            }
+            redemptionsSnapshot.forEach(doc => {
+                const docData = doc.data() as {[username: string]: Redemption}
+                redemptionCount += Object.values(docData)[0].redemptionCount
+            })
+            return redemptionCount
+        },
+        update: async (organization: string, redemption: Redemption, month: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, year: number) => {
+            await db.collection("redemptions").doc(organization).collection(`${month}_${year}`).doc(redemption.username).set(redemption)
+        },
+        delete: async (organization: string, username: string, month: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, year: number) => {
+            await db.collection("redemptions").doc(organization).collection(`${month}_${year}`).doc(username).delete()
+        },
     },
 
     ip: {

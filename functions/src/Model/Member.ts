@@ -8,7 +8,6 @@ export interface Member {
     tagExpiration: number | null
     tags: {
         tagCount: number
-        redeemCount: number
         tagGenerationLimit: number | null
         totalTagCount: number
         timestamp: number

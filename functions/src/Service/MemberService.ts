@@ -28,11 +28,12 @@ export const MemberService = Object.freeze({
         if(Object.keys(totalMembers).length >= Environment.getMaxMembersPerOrganization()){
             throw new Error("unable to add more members to this organization")
         }
-        
+
         const currentMember: Member | undefined = await Repository.group_members.read(group.organization, member.username)
         if (group.owner !== ownerUsername && (currentMember?.permissions?.accounts?.CREATE ?? false)){
             throw new Error("not authorized to perform this action")
         }
+
         await Repository.group_members.create(organization, member)
     },
     readMembers: async (username: string, organization: string, filter: string, offset: number, limit: number): Promise<Array<Member>> => {
@@ -50,15 +51,12 @@ export const MemberService = Object.freeze({
                 member.tags.tagCount = 0
                 member.tags.timestamp = Date.now()
             }
-            // TODO: 
-            // const currentDate = new Date()
-            // if(member.tags.redeemCount >= 0 && member.tags. currentDate.getMonth())
             Repository.group_members.update(organization, member)
             return member
         })
         return members
     },
-    updateMember: async (ownerUsername: string, organization: string, memberUsername: string, permissions: UserPermissions, tagDescription: string, tagExpiration: number | null, tagGenerationLimit: number | null, totalTagCount: number | null) => {
+    updateMember: async (ownerUsername: string, organization: string, memberUsername: string, permissions: UserPermissions, tagDescription: string, tagExpiration: number | null, tagGenerationLimit: number | null) => {
         const owner: User | undefined = await Repository.users.read(ownerUsername)
         const group: Group | undefined = await Repository.groups.read(organization)
         if(group === undefined){
@@ -79,9 +77,6 @@ export const MemberService = Object.freeze({
         member.tagDescription = tagDescription
         member.tagExpiration = tagExpiration
         member.tags.tagGenerationLimit = tagGenerationLimit
-        if(totalTagCount !== null){
-            member.tags.totalTagCount = totalTagCount
-        }
 
         await Repository.group_members.update(organization, member)
     },

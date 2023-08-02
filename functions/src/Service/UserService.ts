@@ -2,7 +2,6 @@ import { Repository } from "../Repository/Repository"
 import { User } from "../Model/User"
 import { JWT } from "../Model/JWT"
 import { Environment } from "../Constants/environment"
-import { userValidations } from "../Util/validations/userValidations"
 import * as bcrypt from "bcrypt"
 import * as jwt from "jsonwebtoken"
 
@@ -14,9 +13,6 @@ export const UserService = Object.freeze({
     },
 
     updateUser: async (username: string, profilePhoto: string | null | undefined, password: string | undefined): Promise<void> => {
-        if(password !== undefined && userValidations.password?.test(password) !== true){
-            throw new Error("invalid password provided")
-        }
         const user: User = await Repository.users.read(username)
         user.profilePhoto = profilePhoto === undefined ? user.profilePhoto : profilePhoto
         user.password = password === undefined ? user.password : await bcrypt.hash(password, 10)
@@ -25,12 +21,6 @@ export const UserService = Object.freeze({
 
     generateAuthToken: async (username: string, password: string): Promise<string> => {
         let user: User = await Repository.users.read(username)
-        if(userValidations.username?.test(username) !== true){
-            throw new Error("invalid username provided")
-        }
-        if(userValidations.password?.test(password) !== true){
-            throw new Error("invalid password provided")
-        }
 
         if(user === undefined){
             user = {

@@ -1,6 +1,7 @@
-import { Member } from "../Model/Member";
-import { User } from "../Model/User";
-import { UserPermissions } from "../Model/UserPermission";
+import { Member } from "../../Model/Member";
+import { Redemption } from "../../Model/Redemption";
+import { User } from "../../Model/User";
+import { UserPermissions } from "../../Model/UserPermission";
 
 export class MemberDTO {
     constructor(
@@ -15,9 +16,10 @@ export class MemberDTO {
         public tagDescription: string,
         public tagExpiration: number | null,
         public tagGenerationLimit: number | null,
+        public totalTagsRedeemedForMonth: number
     ){ }
 
-    public static fromMember(user: User, member: Member): MemberDTO{
+    public static fromMember(user: User, member: Member, redemption: Redemption): MemberDTO{
         return new MemberDTO(
             user.profilePhoto,
             member.username,
@@ -30,6 +32,7 @@ export class MemberDTO {
             member.tagDescription,
             member.tagExpiration,
             member.tags.tagGenerationLimit,
+            redemption.redemptionCount,
         )
     }
 }

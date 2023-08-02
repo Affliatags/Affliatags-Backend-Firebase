@@ -1,14 +1,15 @@
+import { NextFunction, Request, Response } from "express"
 import { Environment } from "../../Constants/environment"
 import { TimePeriods } from "../../Constants/TimePeroids"
 import { Repository } from "../../Repository/Repository"
 
 
-export const ipBlocker = async (req: any, res: any, next: any) => {
-    const ipAddress: string = req.headers['x-forwarded-for'] || 
-    req.connection.remoteAddress || 
-    req.socket.remoteAddress ||
-    req.connection.socket?.remoteAddress
-    if(ipAddress === undefined){
+export const ipBlocker = async (req: Request, res: Response, next: NextFunction) => {
+    const ipAddress: string | undefined = 
+    req.ip || 
+    req.socket.remoteAddress || 
+    req.socket.remoteAddress
+    if(ipAddress === undefined || req.headers['x-forwarded-for'] !== undefined){
         next()
         return
     }

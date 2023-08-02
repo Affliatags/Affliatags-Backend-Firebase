@@ -1,7 +1,6 @@
 import { Group } from "../Model/Group"
 import { Repository } from "../Repository/Repository"
 import { Member } from "../Model/Member"
-import { v4 as uuidv4 } from 'uuid'
 import { Environment } from "../Constants/environment"
 import { TimePeriods } from "../Constants/TimePeroids"
 import { PaymentCard } from "../Model/PaymentCard"
@@ -9,20 +8,14 @@ import { PaymentGatewayClient } from "../Client/PaymentGatewayClient"
 import { User } from "../Model/User"
 import { Tag } from "../Model/Tag"
 import { DealDurations } from "../Constants/DealDurations"
-import { groupValidations } from "../Util/validations/groupValidations"
-import { userValidations } from "../Util/validations/userValidations"
-import { memberValidations } from "../Util/validations/memberValidations"
-import { GroupDTO } from "../DTO/GroupDTO"
+import { Redemption } from "../Model/Redemption"
+import { GroupDTO } from "../DTO/response/GroupDTO"
+import { HCaptchaClient } from "../Client/HCaptchaClient"
+import * as RandExp from "randexp"
 
 export const GroupService = Object.freeze({
 
-    createGroup: async (username: string, organization: string, captchaResponse?:string): Promise<string> => {
-        if(userValidations.username?.test(username) !== true){
-            throw new Error("invalid username provided")
-        }
-        if(groupValidations.organization?.test(organization) !== true){
-            throw new Error("invalid organization name provided")
-        }
+    createGroup: async (username: string, organization: string, captchaResponse:string | null): Promise<string> => {
         const user: User = await Repository.users.read(username)
 
         let captchaRequired: boolean = false
@@ -33,11 +26,19 @@ export const GroupService = Object.freeze({
             }
         }
 
-        if(captchaRequired && captchaResponse === undefined && Environment.getEnableCaptcha()){
+        if(captchaRequired && captchaResponse === null && Environment.getEnableCaptcha()){
             throw new Error("captcha is required")
         }
 
+        if(captchaRequired && captchaResponse !== null && Environment.getEnableCaptcha()){
+            const captchaVerificationSuccessful = await HCaptchaClient.verifyCaptcha(captchaResponse)
+            if(captchaVerificationSuccessful === false){
+                throw new Error("incorrect captcha provided")
+            }
+        }
+
         try{
+            // TODO: Implement captcha verification
             await Repository.groups.read(organization)
             throw new Error("organization already exists")
         }
@@ -54,8 +55,7 @@ export const GroupService = Object.freeze({
         }
 
         const group: Group = {
-            // TODO: Add logo url
-            logo: "",
+            logo: null,
             organization,
             owner: username,
             memberCount: 0,
@@ -80,9 +80,6 @@ export const GroupService = Object.freeze({
     },
 
     addGroupInstagram: async (ownerUsername: string, organization: string, instagram: string): Promise<string | undefined> => {
-        if(groupValidations.instagram?.test(instagram) !== true){
-            throw new Error("invalid instagram name provided")
-        }
         const group: Group | undefined = await Repository.groups.read(organization)
         if(group === undefined){
             throw new Error("group not found")
@@ -91,7 +88,7 @@ export const GroupService = Object.freeze({
             throw new Error("unauthorized to perform this action")
         }
         if(group.instagramVerificationCode === undefined || group.instagramVerificationCode === null || Date.now() >= group.instagramVerificationCode.expires){
-            const verificationCode = uuidv4()
+            const verificationCode = new RandExp(/^[A-Z1-9]{6}$/).gen()
             group.instagramVerificationCode = {
                 code: verificationCode,
                 expires: Date.now() + 300000
@@ -128,6 +125,18 @@ export const GroupService = Object.freeze({
         throw new Error("pending verification code not found on instagram page")
     },
 
+    updateGroupLogo: async (ownerUsername: string,  organization: string, logo: string) => {
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
+        if( group.owner !== ownerUsername){
+            throw new Error("unauthorized")
+        }
+        group.logo = logo
+        await Repository.groups.update(organization, group)
+    },
+
     readGroup: async (username: string, organization: string): Promise<GroupDTO> => {
         const group: Group | undefined = await Repository.groups.read(organization)
         if(group === undefined){
@@ -143,35 +152,38 @@ export const GroupService = Object.freeze({
         }
         group.memberCount = await Repository.group_members.readLength(organization)
         Repository.groups.update(organization, group)
+        const groupDTO = GroupDTO.fromGroup(group)
+        const currentDate = new Date()
+        groupDTO.totalRedemptions = await Repository.redemptions.readTotalRedemption(group.organization, currentDate.getMonth() as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, currentDate.getFullYear())
         return GroupDTO.fromGroup(group)
     },
 
     readGroups: async (username: string): Promise<Array<GroupDTO>> => {
         const groups: Array<Group> = await Repository.groups.readOwnerGroups(username)
-        return groups.map(group => {
+        const groupDTOs: Array<GroupDTO> = []
+        for(const group of groups){
             if(Date.now() - group.tags.timestamp >= TimePeriods.HOUR){
                 group.tags.tagCount = 0
                 group.tags.timestamp = Date.now()
+                Repository.groups.update(group.organization, group)
             }
-            Repository.groups.update(group.organization, group)
-            return GroupDTO.fromGroup(group)
-        })
+            const groupDTO = GroupDTO.fromGroup(group)
+            const currentDate = new Date()
+            groupDTO.totalRedemptions = await Repository.redemptions.readTotalRedemption(group.organization, currentDate.getMonth() as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11, currentDate.getFullYear())
+            groupDTOs.push(GroupDTO.fromGroup(group))
+        }
+        return groupDTOs
     },
 
-    // removeMember: async (jwt: JWT, organizationName: string, username: string) => {
-    //     const group: Group = await Repository.groups.read(organizationName)
-    //     const member = await Repository.group_members.read(organizationName, username)
-    //     if(member === undefined){
-    //         throw new Error("could not perform this action")
-    //     }
-    //     if (group.owner === jwt.user || member.permissions.accounts.DELETE){
-    //         await Repository.group_members.delete(organizationName, username)
-            
-    //     }
-    //     else{
-    //         throw new Error("unauthorized")
-    //     }
-    // },
+    deleteGroup: async (ownerUsername: string, organization: string) => {
+        const group: Group | undefined = await Repository.groups.read(organization)
+        if(group === undefined){
+            throw new Error("group not found")
+        }
+        if(ownerUsername === group.owner){
+            await Repository.groups.delete(organization)
+        }
+    },
 
     upgradeToPremium: async (organization: string, duration: number, card: PaymentCard) => {
         const group: Group | undefined = await Repository.groups.read(organization)
@@ -215,20 +227,7 @@ export const GroupService = Object.freeze({
         await Repository.groups.update(organization, group)
     },
 
-    generateTag: async (username: string, organization: string, description: string, expiration: number | null, captchaResponse?:string): Promise<string> => {
-        if(userValidations.username?.test(username) !== true){
-            throw new Error("invalid username provided")
-        }
-        if(groupValidations.organization?.test(organization) !== true){
-            throw new Error("invalid organization name provided")
-        }
-        if(memberValidations.tagDescription?.test(description) !== true){
-            throw new Error("invalid tag description provided")
-        }
-        if(expiration !== null && (groupValidations.creationDate?.test(expiration) !== true || expiration <= Date.now())){
-            throw new Error("invalid expiration provided")
-        }
-
+    generateTag: async (username: string, organization: string, description: string, expiration: number | null, captchaResponse:string | null): Promise<string> => {
         const group = await Repository.groups.read(organization)
         if(group === undefined){
             throw new Error("group not found")
@@ -245,7 +244,7 @@ export const GroupService = Object.freeze({
         }
 
         const token: Tag = {
-            token: uuidv4(),
+            token: new RandExp(/^[A-Z1-9]{6}$/).gen(),
             description: memberInfo?.tagDescription ?? "",
             createdBy: memberInfo === undefined ? group.owner : memberInfo.username,
             createdAt: Date.now(),
@@ -303,8 +302,15 @@ export const GroupService = Object.freeze({
         }
 
         Repository.tags.deleteOutdatedTagsFromIndexer(organization, tagsToBeRemoved)
-        if(recentCreatedTagCount >= Environment.getMaxTagsPerHourUntilCaptchaRequired() && captchaResponse === undefined && Environment.getEnableCaptcha()){
+        if(recentCreatedTagCount >= Environment.getMaxTagsPerHourUntilCaptchaRequired() && captchaResponse === null && Environment.getEnableCaptcha()){
             throw new Error("captcha is required")
+        }
+
+        if(recentCreatedTagCount >= Environment.getMaxTagsPerHourUntilCaptchaRequired() && captchaResponse !== null && Environment.getEnableCaptcha()){
+            const captchaVerificationSuccessful = await HCaptchaClient.verifyCaptcha(captchaResponse)
+            if(captchaVerificationSuccessful === false){
+                throw new Error("incorrect captcha provided")
+            }
         }
 
         group.tags.tagCount += 1
@@ -336,26 +342,35 @@ export const GroupService = Object.freeze({
             }
             await Repository.tags.delete(organization, tag)
             if(member !== undefined){
-                member.tags.redeemCount += 1
-                Repository.group_members.update(organization, member )
+                const currentDate: Date = new Date()
+                let redemption: Redemption | undefined = await Repository.redemptions.read(organization, member.username, currentDate.getMonth() as any, currentDate.getFullYear())
+                if(redemption === undefined){
+                    redemption = {
+                        redemptionCount: 0,
+                        username: member.username
+                    }
+                }
+                redemption.redemptionCount += 1
+                Repository.redemptions.update(organization, redemption, currentDate.getMonth() as any, currentDate.getFullYear())
+                Repository.group_members.update(organization, member)
             }
             return true
-        }
+    }
         return false
     },
 
-    resetTagRedeemCount: async (ownerUsername: string, organization: string, memberUsername: string) => {
-        const group: Group | undefined = await Repository.groups.read(organization)
-        if(group === undefined || group.owner !== ownerUsername){
-            throw new Error("unauthorized")
-        }
-        const memberInfo: Member | undefined = await Repository.group_members.read(organization, memberUsername)
-        if(memberInfo === undefined){
-            throw new Error("invalid member provided")
-        }
-        memberInfo.tags.redeemCount = 0
-        await Repository.group_members.update(organization, memberInfo)
-    },
+    // resetTagRedeemCount: async (ownerUsername: string, organization: string, memberUsername: string) => {
+    //     const group: Group | undefined = await Repository.groups.read(organization)
+    //     if(group === undefined || group.owner !== ownerUsername){
+    //         throw new Error("unauthorized")
+    //     }
+    //     const memberInfo: Member | undefined = await Repository.group_members.read(organization, memberUsername)
+    //     if(memberInfo === undefined){
+    //         throw new Error("invalid member provided")
+    //     }
+    //     memberInfo.tags.redeemCount = 0
+    //     await Repository.group_members.update(organization, memberInfo)
+    // },
 
     verifyTokenWeb: async (organization: string, token: string): Promise<boolean> => {
         const tagInfo: Tag | undefined = await Repository.tags.read(organization, token)

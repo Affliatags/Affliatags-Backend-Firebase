@@ -2,7 +2,7 @@ export interface Group {
     /**
      * organization : identifies a group
      */
-    logo: string
+    logo: string | null
     organization: string
     owner: string
     memberCount: number
