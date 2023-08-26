@@ -19,7 +19,7 @@ export const UserService = Object.freeze({
         await Repository.users.update(username, user)
     },
 
-    generateAuthToken: async (username: string, password: string): Promise<string> => {
+    generateAuthToken: async (username: string, password: string, safeMode: boolean): Promise<string> => {
         let user: User = await Repository.users.read(username)
 
         if(user === undefined){
@@ -40,6 +40,7 @@ export const UserService = Object.freeze({
             user: username,
             timestamp: Date.now(),
             expiration: null,
+            safeMode,
         }
         return jwt.sign(token, Environment.getJwtSecretKey())
     },

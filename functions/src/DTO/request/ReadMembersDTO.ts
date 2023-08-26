@@ -29,7 +29,7 @@ export module ReadMembersDTO {
     }
 
     const query: Record<keyof typeof DTO.query, Joi.Schema<any> | null> = {
-        filter: Joi.number(),
+        filter: Joi.string(),
         offset: Joi.number(),
         limit: Joi.number(),
     }

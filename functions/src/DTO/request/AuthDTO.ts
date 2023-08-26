@@ -10,6 +10,7 @@ export namespace AuthDTO {
         body: {
             username: <string>"",
             password: <string>"",
+            safeMode: <boolean>false,
         },
         query: {},
         cookies: {},
@@ -18,6 +19,7 @@ export namespace AuthDTO {
     const body: Record<keyof typeof DTO.body, Joi.Schema<any> | null> = {
         username: Joi.string().regex(userValidations.username as RegExp),
         password: Joi.string().regex(/^(?=.*[A-Z])/).regex(/^(?=.*[a-z])/).regex(/^(?=.*[@$!%*#?&])/),
+        safeMode: null,
     }
 
     export const Validator = async (req: Request, res: Response, next: NextFunction) => {

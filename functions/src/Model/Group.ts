@@ -1,7 +1,4 @@
 export interface Group {
-    /**
-     * organization : identifies a group
-     */
     logo: string | null
     organization: string
     owner: string

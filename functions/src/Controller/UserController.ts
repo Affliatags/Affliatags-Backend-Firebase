@@ -15,8 +15,9 @@ export const UserController = (app: Application) => {
                 const { body } = req as unknown as typeof requestDTO.AuthDTO.DTO
                 const username: string = body.username
                 const password: string = body.password
-                const token = await UserService.generateAuthToken(username, password)
-                res.status(201).send({ token })
+                const safeMode: boolean = body.safeMode
+                const token = await UserService.generateAuthToken(username, password, safeMode)
+                res.status(200).send({ token })
             }
             catch (err) {
                 const error: Error = err as Error

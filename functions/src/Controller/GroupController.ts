@@ -106,7 +106,7 @@ export const GroupController = (app: Application) => {
                     case "unauthorized":
                         res.status(401).send(error.message)
                         break
-                    case "organization already exists":
+                    case "group already exists":
                         res.status(400).send(error.message)
                         break
                     case "group not found":

@@ -88,6 +88,7 @@ export const GroupService = Object.freeze({
             throw new Error("unauthorized to perform this action")
         }
         if(group.instagramVerificationCode === undefined || group.instagramVerificationCode === null || Date.now() >= group.instagramVerificationCode.expires){
+            // TODO: Store generated verication code has bcrypt hash
             const verificationCode = new RandExp(/^[A-Z1-9]{6}$/).gen()
             group.instagramVerificationCode = {
                 code: verificationCode,
@@ -115,13 +116,14 @@ export const GroupService = Object.freeze({
             "referrer": `https://www.instagram.com/${instagram}/`,
             "method": "GET",
             "mode": "cors"
-        });
+        })
         const responseJSON = await response.json()
-        if(String(responseJSON["data"]["user"]["biography"]).indexOf(group.instagramVerificationCode.code) !== -1){
+        if(String(responseJSON["data"]["user"]["biography"]).toLowerCase().indexOf(group.instagramVerificationCode.code.toLowerCase()) !== -1){
             group.instagram = instagram
             await Repository.groups.update(group.organization, group)
             return undefined
         }
+        // TODO: Add 5 second timeout after failed verification attempt to mitigate bruteforcing
         throw new Error("pending verification code not found on instagram page")
     },
 
@@ -243,7 +245,12 @@ export const GroupService = Object.freeze({
             throw new Error("unauthorized")
         }
 
+
+        // TODO: Implement defense mechanism against tag clashes
+        // TOTAL TAG PERMITATIONS = 35^6
+
         const token: Tag = {
+            // TODO: Store generated verication code has bcrypt hash
             token: new RandExp(/^[A-Z1-9]{6}$/).gen(),
             description: memberInfo?.tagDescription ?? "",
             createdBy: memberInfo === undefined ? group.owner : memberInfo.username,
@@ -260,7 +267,7 @@ export const GroupService = Object.freeze({
             group.subscription.expirationDate !== null && 
             Date.now() >= group.subscription.expirationDate && 
             group.tags.tagCount >= Environment.getMaxUnsubscribedTagCountPerHour() &&
-            Environment.getEnablePremium() !== true
+            Environment.getEnablePremium() === true
         ){
             throw new Error("organization token quota exceeded")
         }        
@@ -321,6 +328,8 @@ export const GroupService = Object.freeze({
 
     verifyTag: async (username: string, organization: string, tag: string): Promise<boolean> => {
         const tagInfo: Tag | undefined = await Repository.tags.read(organization, tag)
+
+        // TODO: Add 5 second timeout after failed scan attempt to mitigate bruteforcing
 
         const group = await Repository.groups.read(organization)
         if(group === undefined){
